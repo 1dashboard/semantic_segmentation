@@ -1,0 +1,25 @@
+# 训练输出
+output/
+
+# 日志
+log/
+
+# 预训练权重 / checkpoint
+*.pth
+*.pth.tar
+pidnet_pretrained/
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# IDE
+.idea/
+.vscode/
+
+# 论文PDF (非代码)
+*.pdf
+
+# TensorBoard
+runs/
