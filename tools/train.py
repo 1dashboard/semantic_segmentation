@@ -135,7 +135,28 @@ def main():
 
     bd_criterion = BondaryLoss()
     
-    model = FullModel(model, sem_criterion, bd_criterion)
+    use_online = (hasattr(config, 'ONLINE_COMPLEXITY') and
+                  getattr(config.ONLINE_COMPLEXITY, 'ENABLED', False))
+    online_cfg = None
+    if use_online:
+        # Merge ONLINE_COMPLEXITY config with dataset-level settings
+        oc = config.ONLINE_COMPLEXITY
+        online_cfg = dict(
+            NUM_CLASSES=config.DATASET.NUM_CLASSES,
+            IGNORE_LABEL=config.TRAIN.IGNORE_LABEL,
+            WINDOW_SIZE=getattr(oc, 'WINDOW_SIZE', 15),
+            BOUNDARY_WIDTH=getattr(oc, 'BOUNDARY_WIDTH', 3),
+            ALPHA=getattr(oc, 'ALPHA', 1.0),
+            BETA=getattr(oc, 'BETA', 1.0),
+            GAMMA=getattr(oc, 'GAMMA', 0.5),
+        )
+    model = FullModel(model, sem_criterion, bd_criterion,
+                      temperature_ic=config.TRAIN.temperature_ic,
+                      k_mse=config.TRAIN.k_mse,
+                      k_kd=config.TRAIN.k_kd,
+                      k_ic=config.TRAIN.k_ic,
+                      use_online_complexity=use_online,
+                      online_complexity_cfg=online_cfg)
     model = nn.DataParallel(model, device_ids=gpus).cuda()
 
     # optimizer

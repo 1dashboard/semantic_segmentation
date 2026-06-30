@@ -20,13 +20,15 @@ from configs import config
 import torch.distributed as dist
 
 from models.ICNet import ICNet
+from utils.online_complexity import OnlineComplexityLabel
 device = torch.device('cuda')
 
 
 
 class FullModel(nn.Module):
 
-    def __init__(self, model, sem_loss, bd_loss, temperature_ic=0.6, k_mse=10, k_kd=1, k_ic=10):
+    def __init__(self, model, sem_loss, bd_loss, temperature_ic=0.6, k_mse=10, k_kd=1, k_ic=10,
+                 use_online_complexity=False, online_complexity_cfg=None):
         super(FullModel, self).__init__()
 
         self.model = model
@@ -38,10 +40,26 @@ class FullModel(nn.Module):
         self.k_kd = k_kd
         self.k_ic = k_ic
 
-        self.icnet = ICNet()
-        self.icnet.load_state_dict(torch.load('./models/checkpoint/icnet_ck.pth',map_location=torch.device('cpu')))
-        self.icnet.eval()
-        self.icnet.to(device)
+        self.use_online_complexity = use_online_complexity
+
+        if not use_online_complexity:
+            self.icnet = ICNet()
+            self.icnet.load_state_dict(torch.load('./models/checkpoint/icnet_ck.pth',map_location=torch.device('cpu')))
+            self.icnet.eval()
+            self.icnet.to(device)
+            self.online_complexity = None
+        else:
+            self.icnet = None
+            cfg = online_complexity_cfg if online_complexity_cfg is not None else {}
+            self.online_complexity = OnlineComplexityLabel(
+                num_classes=cfg.get('NUM_CLASSES', 19),
+                window_size=cfg.get('WINDOW_SIZE', 15),
+                boundary_width=cfg.get('BOUNDARY_WIDTH', 3),
+                alpha=cfg.get('ALPHA', 1.0),
+                beta=cfg.get('BETA', 1.0),
+                gamma=cfg.get('GAMMA', 0.5),
+                ignore_label=cfg.get('IGNORE_LABEL', 255),
+            )
 
         self.temperature_ic1 = 0.8
         self.temperature_ic2 = 0.7
@@ -89,9 +107,14 @@ class FullModel(nn.Module):
 
         if pred_icmap is not None:
             with torch.no_grad():
-                cly_x = F.interpolate(inputs, (512, 512), mode = 'bilinear')
-                ic_map = self.icnet(cly_x)
-                ic_map = F.interpolate(ic_map, (inputs.size(-2), inputs.size(-1)), mode = 'bilinear')
+                if not self.use_online_complexity:
+                    # Original: ICNet teacher model
+                    cly_x = F.interpolate(inputs, (512, 512), mode = 'bilinear')
+                    ic_map = self.icnet(cly_x)
+                    ic_map = F.interpolate(ic_map, (inputs.size(-2), inputs.size(-1)), mode = 'bilinear')
+                else:
+                    # Improvement 1: online complexity labels from annotations
+                    ic_map = self.online_complexity(labels)
             ic_loss = self.ic_kd(pred_icmap, ic_map)
             
         else:

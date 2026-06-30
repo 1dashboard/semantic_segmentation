@@ -51,6 +51,13 @@ TRAIN:
   k_mse: 1.0
   k_kd: 10.0
   k_ic: 1.0
+ONLINE_COMPLEXITY:
+  ENABLED: false
+  WINDOW_SIZE: 15
+  BOUNDARY_WIDTH: 3
+  ALPHA: 1.0
+  BETA: 1.0
+  GAMMA: 0.5
 TEST:
   IMAGE_SIZE:
   - 2048
