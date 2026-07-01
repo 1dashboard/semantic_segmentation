@@ -94,6 +94,11 @@ _C.ONLINE_COMPLEXITY.ALPHA = 1.0
 _C.ONLINE_COMPLEXITY.BETA = 1.0
 _C.ONLINE_COMPLEXITY.GAMMA = 0.5
 
+# multi-scale IC supervision (Improvement 2)
+_C.MULTI_IC_HEAD = CN()
+_C.MULTI_IC_HEAD.ENABLED = False
+_C.MULTI_IC_HEAD.LAYER_WEIGHTS = [0.15, 0.3, 0.55]
+
 # testing
 _C.TEST = CN()
 _C.TEST.IMAGE_SIZE = [2048, 1024]  # width * height

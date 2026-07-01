@@ -91,6 +91,16 @@ class ICTEDNet(nn.Module):
         self.ic_fuse1 = ICFusion(64, 128)
         self.ic_fuse2 = ICFusion(64, 256)
 
+        # 改进2: 多层复杂度监督 — layer 1/2 添加轻量复杂度头
+        # Conv(64→1, 3×3) + BN, 各 ~577 参数
+        self.ic_head_1 = nn.Sequential(
+            nn.Conv2d(64, 1, 3, 1, 1), nn.BatchNorm2d(1)
+        )
+        self.ic_head_2 = nn.Sequential(
+            nn.Conv2d(64, 1, 3, 1, 1), nn.BatchNorm2d(1)
+        )
+        # ic_enc_3 即为 layer 3 的复杂度头 (64→1 Conv+BN), 已存在
+
         # self.icpg = ICPG_conv(256, 1)
         self.icpg = ICPG_pool_more(ic_num=2)
 
@@ -125,14 +135,19 @@ class ICTEDNet(nn.Module):
 
         feat1, feat2, feat3, feat4 = self.backbone(x)
 
+        # ICSP Layer 1 — 复杂度头放在 ICFusion 之前
         feat_spic_1 = self.ic_enc_1(feat1)
+        ic_map_1 = self.ic_head_1(feat_spic_1)  # 改进2: 浅层复杂度输出
         feat_spic_1 = self.ic_fuse1(feat_spic_1, feat2)
 
+        # ICSP Layer 2
         feat_spic_2 = self.ic_enc_2(feat_spic_1)
+        ic_map_2 = self.ic_head_2(feat_spic_2)  # 改进2: 中层复杂度输出
         feat_spic_2 = self.ic_fuse2(feat_spic_2, feat3)
 
-        ic_map = self.ic_enc_3(feat_spic_2)
-        ic_feature = self.ic_enc_4(ic_map)
+        # ICSP Layer 3 — 已有
+        ic_map_3 = self.ic_enc_3(feat_spic_2)
+        ic_feature = self.ic_enc_4(ic_map_3)
 
         feat_ms_context = self.ms_context(feat4)
 
@@ -141,14 +156,20 @@ class ICTEDNet(nn.Module):
         feature_ic_refine = self.icpg(feat_ml_context, ic_feature)
 
         feature_out = self.decoder(feature_ic_refine)
-        
 
-        if self.augment: 
+
+        if self.augment:
             aux_feature_out = self.aux_decoder(feat3)
-            ic_map = F.sigmoid(F.interpolate(ic_map, scale_factor=8, mode = 'bilinear'))
-            return [aux_feature_out, feature_out], ic_map
+            # 改进2: 三层 IC map 都上采样并返回列表
+            ic_maps = [
+                F.sigmoid(F.interpolate(ic_map_1, scale_factor=8, mode='bilinear')),
+                F.sigmoid(F.interpolate(ic_map_2, scale_factor=8, mode='bilinear')),
+                F.sigmoid(F.interpolate(ic_map_3, scale_factor=8, mode='bilinear')),
+            ]
+            return [aux_feature_out, feature_out], ic_maps
         else:
-            return feature_out, ic_map
+            # 推理模式: 只返回 layer 3 的 IC map (保持兼容)
+            return feature_out, ic_map_3
 
 def get_seg_model(cfg, imgnet_pretrained):
     

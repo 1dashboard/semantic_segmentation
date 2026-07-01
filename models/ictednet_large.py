@@ -91,6 +91,14 @@ class ICTEDNet(nn.Module):
         self.ic_fuse1 = ICFusion(64, 128, kernel_size=128)
         self.ic_fuse2 = ICFusion(64, 256, kernel_size=128)
 
+        # 改进2: 多层复杂度监督 — layer 1/2 添加轻量复杂度头
+        self.ic_head_1 = nn.Sequential(
+            nn.Conv2d(64, 1, 3, 1, 1), nn.BatchNorm2d(1)
+        )
+        self.ic_head_2 = nn.Sequential(
+            nn.Conv2d(64, 1, 3, 1, 1), nn.BatchNorm2d(1)
+        )
+
         # self.icpg = ICPG_conv(256, 1)
         self.icpg = ICPG_pool_more(ic_num=2)
 
@@ -128,13 +136,15 @@ class ICTEDNet(nn.Module):
         feat1, feat2, feat3, feat4 = self.backbone(x)
 
         feat_spic_1 = self.ic_enc_1(feat1)
+        ic_map_1 = self.ic_head_1(feat_spic_1)
         feat_spic_1 = self.ic_fuse1(feat_spic_1, feat2)
 
         feat_spic_2 = self.ic_enc_2(feat_spic_1)
+        ic_map_2 = self.ic_head_2(feat_spic_2)
         feat_spic_2 = self.ic_fuse2(feat_spic_2, feat3)
 
-        ic_map = self.ic_enc_3(feat_spic_2)
-        ic_feature = self.ic_enc_4(ic_map)
+        ic_map_3 = self.ic_enc_3(feat_spic_2)
+        ic_feature = self.ic_enc_4(ic_map_3)
 
         feat_ms_context = self.ms_context(feat4)
 
@@ -146,12 +156,16 @@ class ICTEDNet(nn.Module):
         feature_out = self.decoder(feature_ic_refine)
         
 
-        if self.augment: 
+        if self.augment:
             aux_feature_out = self.aux_decoder(feat3)
-            ic_map = F.sigmoid(F.interpolate(ic_map, scale_factor=4, mode = 'bilinear'))
-            return [aux_feature_out, feature_out], ic_map
+            ic_maps = [
+                F.sigmoid(F.interpolate(ic_map_1, scale_factor=4, mode='bilinear')),
+                F.sigmoid(F.interpolate(ic_map_2, scale_factor=4, mode='bilinear')),
+                F.sigmoid(F.interpolate(ic_map_3, scale_factor=4, mode='bilinear')),
+            ]
+            return [aux_feature_out, feature_out], ic_maps
         else:
-            return feature_out, ic_map
+            return feature_out, ic_map_3
 
 def get_seg_model(cfg, imgnet_pretrained):
     

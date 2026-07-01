@@ -28,7 +28,8 @@ device = torch.device('cuda')
 class FullModel(nn.Module):
 
     def __init__(self, model, sem_loss, bd_loss, temperature_ic=0.6, k_mse=10, k_kd=1, k_ic=10,
-                 use_online_complexity=False, online_complexity_cfg=None):
+                 use_online_complexity=False, online_complexity_cfg=None,
+                 ic_layer_weights=None):
         super(FullModel, self).__init__()
 
         self.model = model
@@ -41,6 +42,9 @@ class FullModel(nn.Module):
         self.k_ic = k_ic
 
         self.use_online_complexity = use_online_complexity
+
+        # 改进2: 多层 IC loss 权重, 默认 [0.15, 0.3, 0.55] (深层权重更高)
+        self.ic_layer_weights = ic_layer_weights if ic_layer_weights is not None else [0.15, 0.3, 0.55]
 
         if not use_online_complexity:
             self.icnet = ICNet()
@@ -107,20 +111,28 @@ class FullModel(nn.Module):
 
         if pred_icmap is not None:
             with torch.no_grad():
+                # 判断是改进2的多层IC map列表还是原来的单个IC map
+                is_multi_ic = isinstance(pred_icmap, (list, tuple))
+
                 if self.training and self.use_online_complexity:
-                    # Improvement 1: online complexity labels from annotations
-                    ic_map = self.online_complexity(labels)
-                    ic_loss = self.ic_kd(pred_icmap, ic_map)
+                    ic_map_label = self.online_complexity(labels)
                 elif not self.use_online_complexity:
-                    # Original: ICNet teacher model
-                    cly_x = F.interpolate(inputs, (512, 512), mode = 'bilinear')
-                    ic_map = self.icnet(cly_x)
-                    ic_map = F.interpolate(ic_map, (inputs.size(-2), inputs.size(-1)), mode = 'bilinear')
-                    ic_loss = self.ic_kd(pred_icmap, ic_map)
+                    cly_x = F.interpolate(inputs, (512, 512), mode='bilinear')
+                    ic_map_label = self.icnet(cly_x)
+                    ic_map_label = F.interpolate(ic_map_label, (inputs.size(-2), inputs.size(-1)), mode='bilinear')
                 else:
-                    # eval mode with online complexity: skip IC computation
                     ic_loss = torch.zeros(1).to(device)
-            
+                    ic_map_label = None
+
+                if ic_map_label is not None:
+                    if is_multi_ic:
+                        # 改进2: 对三层 IC map 分别计算 loss，按权重求和
+                        ic_loss = torch.zeros(1).to(device)
+                        for k, (ic_map_k, w_k) in enumerate(zip(pred_icmap, self.ic_layer_weights)):
+                            ic_loss = ic_loss + w_k * self.ic_kd(ic_map_k, ic_map_label)
+                    else:
+                        # 原始: 单层 IC loss
+                        ic_loss = self.ic_kd(pred_icmap, ic_map_label)
         else:
             ic_loss = torch.zeros(1)
             ic_loss = ic_loss.to(device)

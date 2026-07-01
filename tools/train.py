@@ -150,13 +150,20 @@ def main():
             BETA=getattr(oc, 'BETA', 1.0),
             GAMMA=getattr(oc, 'GAMMA', 0.5),
         )
+    # 改进2: 多层 IC 监督权重
+    use_multi_ic = (hasattr(config, 'MULTI_IC_HEAD') and
+                    getattr(config.MULTI_IC_HEAD, 'ENABLED', False))
+    ic_layer_weights = (list(config.MULTI_IC_HEAD.LAYER_WEIGHTS)
+                        if use_multi_ic else None)
+
     model = FullModel(model, sem_criterion, bd_criterion,
                       temperature_ic=config.TRAIN.temperature_ic,
                       k_mse=config.TRAIN.k_mse,
                       k_kd=config.TRAIN.k_kd,
                       k_ic=config.TRAIN.k_ic,
                       use_online_complexity=use_online,
-                      online_complexity_cfg=online_cfg)
+                      online_complexity_cfg=online_cfg,
+                      ic_layer_weights=ic_layer_weights)
     model = nn.DataParallel(model, device_ids=gpus).cuda()
 
     # optimizer
