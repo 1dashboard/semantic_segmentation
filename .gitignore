@@ -1,5 +1,12 @@
 # 训练输出
 output/
+new_output/
+
+# 训练日志
+train*.log
+
+# 验证结果图片
+val_results/
 
 # 日志
 log/
