@@ -156,6 +156,11 @@ def main():
     ic_layer_weights = (list(config.MULTI_IC_HEAD.LAYER_WEIGHTS)
                         if use_multi_ic else None)
 
+    # 改进3: 跨层一致性约束
+    use_ic_cons = (hasattr(config, 'IC_CONSISTENCY') and
+                   getattr(config.IC_CONSISTENCY, 'ENABLED', False))
+    k_ic_cons = (config.IC_CONSISTENCY.WEIGHT if use_ic_cons else 0.0)
+
     model = FullModel(model, sem_criterion, bd_criterion,
                       temperature_ic=config.TRAIN.temperature_ic,
                       k_mse=config.TRAIN.k_mse,
@@ -163,7 +168,9 @@ def main():
                       k_ic=config.TRAIN.k_ic,
                       use_online_complexity=use_online,
                       online_complexity_cfg=online_cfg,
-                      ic_layer_weights=ic_layer_weights)
+                      ic_layer_weights=ic_layer_weights,
+                      use_ic_consistency=use_ic_cons,
+                      k_ic_cons=k_ic_cons)
     model = nn.DataParallel(model, device_ids=gpus).cuda()
 
     # optimizer

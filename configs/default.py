@@ -99,6 +99,11 @@ _C.MULTI_IC_HEAD = CN()
 _C.MULTI_IC_HEAD.ENABLED = False
 _C.MULTI_IC_HEAD.LAYER_WEIGHTS = [0.15, 0.3, 0.55]
 
+# cross-layer IC consistency (Improvement 3)
+_C.IC_CONSISTENCY = CN()
+_C.IC_CONSISTENCY.ENABLED = False
+_C.IC_CONSISTENCY.WEIGHT = 0.5
+
 # testing
 _C.TEST = CN()
 _C.TEST.IMAGE_SIZE = [2048, 1024]  # width * height

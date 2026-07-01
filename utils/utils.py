@@ -29,7 +29,7 @@ class FullModel(nn.Module):
 
     def __init__(self, model, sem_loss, bd_loss, temperature_ic=0.6, k_mse=10, k_kd=1, k_ic=10,
                  use_online_complexity=False, online_complexity_cfg=None,
-                 ic_layer_weights=None):
+                 ic_layer_weights=None, use_ic_consistency=False, k_ic_cons=0.5):
         super(FullModel, self).__init__()
 
         self.model = model
@@ -45,6 +45,10 @@ class FullModel(nn.Module):
 
         # 改进2: 多层 IC loss 权重, 默认 [0.15, 0.3, 0.55] (深层权重更高)
         self.ic_layer_weights = ic_layer_weights if ic_layer_weights is not None else [0.15, 0.3, 0.55]
+
+        # 改进3: 跨层一致性约束
+        self.use_ic_consistency = use_ic_consistency
+        self.k_ic_cons = k_ic_cons
 
         if not use_online_complexity:
             self.icnet = ICNet()
@@ -124,12 +128,21 @@ class FullModel(nn.Module):
                     ic_loss = torch.zeros(1).to(device)
                     ic_map_label = None
 
+                ic_cons_loss = torch.zeros(1).to(device)
+
                 if ic_map_label is not None:
                     if is_multi_ic:
                         # 改进2: 对三层 IC map 分别计算 loss，按权重求和
                         ic_loss = torch.zeros(1).to(device)
                         for k, (ic_map_k, w_k) in enumerate(zip(pred_icmap, self.ic_layer_weights)):
                             ic_loss = ic_loss + w_k * self.ic_kd(ic_map_k, ic_map_label)
+
+                        # 改进3: 跨层一致性约束 — 以 layer3 为锚点, L1 约束 layer1/2
+                        if self.training and self.use_ic_consistency:
+                            C1, C2, C3 = pred_icmap
+                            ic_cons_loss = self.k_ic_cons * (
+                                F.l1_loss(C1, C3.detach()) + F.l1_loss(C2, C3.detach())
+                            )
                     else:
                         # 原始: 单层 IC loss
                         ic_loss = self.ic_kd(pred_icmap, ic_map_label)
@@ -155,7 +168,10 @@ class FullModel(nn.Module):
         # loss_sb = self.sem_loss(outputs[-2], bd_label)
         loss = loss_s
 
-        return torch.unsqueeze(loss,0), outputs, acc, [loss_s, ic_loss]
+        # 改进3: 一致性损失加入总 IC loss
+        total_ic_loss = ic_loss + ic_cons_loss
+
+        return torch.unsqueeze(loss,0), outputs, acc, [loss_s, total_ic_loss]
 
 
 class AverageMeter(object):
