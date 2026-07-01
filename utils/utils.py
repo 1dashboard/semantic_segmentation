@@ -107,15 +107,19 @@ class FullModel(nn.Module):
 
         if pred_icmap is not None:
             with torch.no_grad():
-                if not self.use_online_complexity:
+                if self.training and self.use_online_complexity:
+                    # Improvement 1: online complexity labels from annotations
+                    ic_map = self.online_complexity(labels)
+                    ic_loss = self.ic_kd(pred_icmap, ic_map)
+                elif not self.use_online_complexity:
                     # Original: ICNet teacher model
                     cly_x = F.interpolate(inputs, (512, 512), mode = 'bilinear')
                     ic_map = self.icnet(cly_x)
                     ic_map = F.interpolate(ic_map, (inputs.size(-2), inputs.size(-1)), mode = 'bilinear')
+                    ic_loss = self.ic_kd(pred_icmap, ic_map)
                 else:
-                    # Improvement 1: online complexity labels from annotations
-                    ic_map = self.online_complexity(labels)
-            ic_loss = self.ic_kd(pred_icmap, ic_map)
+                    # eval mode with online complexity: skip IC computation
+                    ic_loss = torch.zeros(1).to(device)
             
         else:
             ic_loss = torch.zeros(1)

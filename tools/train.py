@@ -206,7 +206,7 @@ def main():
                   epoch_iters, config.TRAIN.LR, num_iters,
                   trainloader, optimizer, model, writer_dict)
 
-        if flag_rm == 1 or (epoch % 5 == 0 and epoch < real_end - 100) or (epoch >= real_end - 100):
+        if epoch % 10 == 0:
             valid_loss, mean_IoU, IoU_array = validate(config, epoch,
                         testloader, model, writer_dict)
         if flag_rm == 1:
