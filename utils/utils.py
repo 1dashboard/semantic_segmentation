@@ -137,11 +137,12 @@ class FullModel(nn.Module):
                         for k, (ic_map_k, w_k) in enumerate(zip(pred_icmap, self.ic_layer_weights)):
                             ic_loss = ic_loss + w_k * self.ic_kd(ic_map_k, ic_map_label)
 
-                        # 改进3: 跨层一致性约束 — 以 layer3 为锚点, L1 约束 layer1/2
+                        # 改进3: 跨层一致性约束 — 以 layer3 为锚点, L2(MSE) 约束 layer1/2
+                        # L2 梯度自适应：偏差大时用力拉回，偏差小时退场让监督主导
                         if self.training and self.use_ic_consistency:
                             C1, C2, C3 = pred_icmap
                             ic_cons_loss = self.k_ic_cons * (
-                                F.l1_loss(C1, C3.detach()) + F.l1_loss(C2, C3.detach())
+                                F.mse_loss(C1, C3.detach()) + F.mse_loss(C2, C3.detach())
                             )
                     else:
                         # 原始: 单层 IC loss
